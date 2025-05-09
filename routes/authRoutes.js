@@ -2,7 +2,7 @@ const express = require('express');
 const {
     handleOtpRequest,
     verifyOtp,
-    setProfile, getUserList, deleteUser, profileUpdate, logout
+    setProfile, resendOtp, getUserList, deleteUser, profileUpdate, logout
 } = require('../controllers/authController'); // Import all required controller functions
 const router = express.Router();
 
@@ -14,6 +14,8 @@ router.post('/verify-otp', verifyOtp);
 
 // Route to set profile for new users
 router.post('/set-profile', setProfile);
+
+router.post('/resend-otp', resendOtp);
 
 // Route to get user list (requires OTP verification)
 router.get('/user-list', getUserList);

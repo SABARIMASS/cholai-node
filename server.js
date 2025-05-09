@@ -38,7 +38,7 @@ app.use('/api/chats', (req, res, next) => {
 
 
 // Serve static files from the "local/temp" folder
-app.use('/local/temp', express.static(path.join(__dirname, 'local/temp')));
+app.use('/local', express.static(path.join(__dirname, 'local')));
 // Initialize socket connections
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);

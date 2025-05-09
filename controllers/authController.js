@@ -99,7 +99,6 @@ const handleOtpRequest = async (req, res) => {
     }
 };
 
-
 // Verify OTP for Registration or Login
 const verifyOtp = async (req, res) => {
     const { phoneNumber, countryCode, otp, userStatus } = req.body;
@@ -165,9 +164,45 @@ const verifyOtp = async (req, res) => {
         res.status(500).json({ status: -1, message: error.message });
     }
 };
+const resendOtp = async (req, res) => {
+    const { userId } = req.body;
 
+    try {
+        // Find the user by ID
+        const user = await User.findById(userId);
 
+        if (!user) {
+            return res.status(404).json({
+                status: -1,
+                message: 'User not found',
+            });
+        }
 
+        const { phoneNumber, countryCode } = user;
+
+        // Generate and store new OTP
+        const newOtp = await generateAndStoreOtp(phoneNumber, countryCode);
+        if (!newOtp) {
+            return res.status(500).json({
+                status: -1,
+                message: 'Failed to generate OTP',
+            });
+        }
+
+        return res.status(200).json({
+            status: 1,
+            message: 'OTP resent successfully',
+            otp: newOtp, // Remove this in production
+        });
+    } catch (error) {
+        console.error('Resend OTP Error:', error);
+        return res.status(500).json({
+            status: -1,
+            message: 'Internal Server Error',
+            error: error.message,
+        });
+    }
+};
 
 const setProfile = async (req, res) => {
     const { phoneNumber, countryCode, userId, name, about, tempImage, deviceId, deviceToken } = req.body;
@@ -204,12 +239,13 @@ const setProfile = async (req, res) => {
             if (!fs.existsSync(userProfileDir)) {
                 fs.mkdirSync(userProfileDir, { recursive: true });
             }
-
+            const imageFileName = `${userId}-${Date.now()}-${tempImage}`;
             // Move the file
-            const newImagePath = path.join(userProfileDir, `${userId}-${Date.now()}-${tempImage}`);
+            const newImagePath = path.join(userProfileDir, imageFileName);
             if (fs.existsSync(tempImagePath)) {
                 fs.renameSync(tempImagePath, newImagePath); // Move the file
                 user.profileImage = newImagePath; // Save new path to the user profile
+                user.profileImage = path.join('local/userProfile', imageFileName);
             } else {
                 return res.status(400).json({ status: -1, message: 'Temp image not found' });
             }
@@ -241,9 +277,6 @@ const setProfile = async (req, res) => {
         return res.status(500).json({ status: -1, message: error.message });
     }
 };
-
-
-
 
 const getUserList = async (req, res) => {
     try {
@@ -353,4 +386,4 @@ const logout = async (req, res) => {
 };
 
 
-module.exports = { handleOtpRequest, verifyOtp, setProfile, getUserList, deleteUser, profileUpdate, logout };
+module.exports = { handleOtpRequest, verifyOtp, setProfile, resendOtp, getUserList, deleteUser, profileUpdate, logout };
