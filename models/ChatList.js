@@ -5,7 +5,7 @@ const chatListSchema = new mongoose.Schema({
     chatId: { type: String, required: true }, // Unique chat ID for the conversation
     participants: { type: [String], required: true }, // Array of participant user IDs
     lastMessage: { type: String, required: true }, // Content of the last message
-    lastSenderId: { type: String, required: true }, // User ID of the last sender
+    receiverId: { type: String, required: true }, // User ID of the last sender
     lastMessageTime: { type: Date, default: Date.now }, // Time of the last message
     lastMessageStatus: {
         type: String,

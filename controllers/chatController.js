@@ -2,54 +2,80 @@ const ChatList = require('../models/ChatList');
 const ChatDetails = require('../models/ChatDetail');
 const moment = require('moment'); // For date formatting (optional but recommended)
 const { v4: uuidv4 } = require('uuid'); // Use this to generate a unique messageId
+const mongoose = require('mongoose');
+const User = require('../models/User');
 
 
-const getChatList = async (req, res) => {
-    const { userId } = req.body;
+const getUserChatList = async (req, res) => {
+  try {
+    const { userId } = req.body;  // userId of the logged-in user
 
-    try {
-        // Aggregate the chat list with grouping by lastMessageDate (date only)
-        const chatList = await ChatList.aggregate([
-            { $match: { userId } }, // Match the userId
-            {
-                $project: {
-                    chatId: 1,
-                    participants: 1,
-                    lastMessage: 1,
-                    lastMessageTime: 1,
-                    lastMessageDate: { $toDate: "$lastMessageTime" }, // Extract the date part of the last message time
-                }
-            },
-            {
-                $group: {
-                    _id: {
-                        date: { $dateToString: { format: "%Y-%m-%d", date: "$lastMessageDate" } } // Group by date
-                    },
-                    chats: { $push: "$$ROOT" } // Push all the chats into the 'chats' array
-                }
-            },
-            { $sort: { "_id.date": -1 } }, // Sort the dates in descending order (most recent first)
-        ]);
+    const chatList = await ChatList.aggregate([
+      {
+        $match: {
+          userId: userId  // Match chats where userId is the logged-in user
+        }
+      },
+       {
+        $addFields: {
+          receiverId: { $toObjectId: "$receiverId" }  // Ensure receiverId is ObjectId
+        }
+      },
+      {
+        $lookup: {
+          from: "users",  // Join with the users collection to get the receiver details
+          localField: "receiverId",  // Match receiverId from chatList with _id in users collection
+          foreignField: "_id",  // _id field in the users collection
+          as: "receiverDetails"
+        }
+      },
+      {
+        $unwind: {
+          path: "$receiverDetails",
+          preserveNullAndEmptyArrays: true  // Keep chats even if the receiver doesn't exist
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          chatId: 1,
+          lastMessage: {
+            text: "$lastMessage",
+            status: "$lastMessageStatus",
+            time: "$lastMessageTime",
+            senderId: "$userId"
+          },
+          unreadCount: 1,
+          receiver: {
+            name: "$receiverDetails.name",
+            profileImage: "$receiverDetails.profileImage"
+          }
+        }
+      },
+      {
+        $sort: { "lastMessage.time": -1 }  // Sort by the last message time
+      }
+    ]);
 
-        // Format the date and structure the response to make it user-friendly
-        const formattedChatList = chatList.map(group => ({
-            date: moment(group._id.date).format('YYYY-MM-DD'), // Format date as 'YYYY-MM-DD'
-            chats: group.chats.sort((a, b) => b.lastMessageTime - a.lastMessageTime) // Sort chats by lastMessageTime (newest first)
-        }));
+    return res.status(200).json({
+      status: 1,
+      message: "Chat list fetched successfully",
+      data: chatList
+    });
 
-        res.status(200).json({
-            status: 1, // Success
-            message: 'Chat list retrieved successfully',
-            data: formattedChatList, // Send the grouped and formatted chat list
-        });
-    } catch (error) {
-        console.error('Error fetching chat list:', error);
-        res.status(500).json({
-            status: -1, // Failure
-            message: 'Internal server error',
-        });
-    }
+  } catch (error) {
+    console.error("Chat list error:", error);
+    return res.status(500).json({
+      status: 0,
+      message: "Server error",
+      error: error.message
+    });
+  }
 };
+
+module.exports = { getUserChatList };
+
+
 
 const getChatDetails = async (req, res) => {
     const { chatId } = req.body;
@@ -146,7 +172,7 @@ const sendMessage = async (req, res) => {
                 chatId,
                 participants: [senderId, receiverId],
                 lastMessage: message,
-                lastSenderId: senderId,
+                receiverId: senderId,
                 lastMessageTime: Date.now(),
                 lastMessageStatus: 'sent',
             },
@@ -160,7 +186,7 @@ const sendMessage = async (req, res) => {
                 chatId,
                 participants: [senderId, receiverId],
                 lastMessage: message,
-                lastSenderId: senderId,
+                receiverId: senderId,
                 lastMessageTime: Date.now(),
                 unreadCount: 1,
             },
@@ -171,7 +197,7 @@ const sendMessage = async (req, res) => {
             chatId,
             participants: [senderId, receiverId],
             lastMessage: message,
-            lastSenderId: senderId,
+            receiverId: receiverId,
             lastMessageTime: Date.now(),
             unreadCount: 1,
         };
@@ -287,4 +313,4 @@ const markMessagesAsRead = async (req, res) => {
 
 
 
-module.exports = { getChatList, getChatDetails, sendMessage, updateMessageStatus, markMessagesAsRead };
+module.exports = { getUserChatList, getChatDetails, sendMessage, updateMessageStatus, markMessagesAsRead };
