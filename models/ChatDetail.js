@@ -10,6 +10,8 @@ const chatDetailsSchema = new mongoose.Schema({
     message: { type: String, required: true },  // Message content
     status: { type: String, enum: ['sent', 'delivered', 'read'], default: 'sent' },  // Status of the message
     timestamp: { type: Date, default: Date.now }, // Time message was sent
+    senderUnreadCount: { type: Number, default: 0 }, // Count of unread messages for the receiver
+    receiverUnreadCount: { type: Number, default: 0 }, // Count of unread messages for the receiver
 }, { timestamps: true });
 
 const ChatDetails = mongoose.model('ChatDetails', chatDetailsSchema);
