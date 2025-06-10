@@ -8,46 +8,59 @@ const User = require('../models/User');
 
 const getUserChatList = async (req, res) => {
     try {
-        const { userId } = req.body;  // userId of the logged-in user
+        const { userId } = req.body; // logged-in user ID
 
         const chatList = await ChatList.aggregate([
             {
                 $match: {
-                    userId: userId  // Match chats where userId is the logged-in user
+                    userId: userId
                 }
             },
+
             {
                 $addFields: {
-                    receiverId: { $toObjectId: "$receiverId" }, // Ensure receiverId is ObjectId
-                    senderId: { $toObjectId: "$senderId" }
+                    receiverObjectId: {
+                        $cond: {
+                            if: { $eq: [{ $strLenCP: { $ifNull: ["$receiverId", ""] } }, 24] },
+                            then: { $toObjectId: "$receiverId" },
+                            else: null
+                        }
+                    },
+                    senderObjectId: {
+                        $cond: {
+                            if: { $eq: [{ $strLenCP: { $ifNull: ["$senderId", ""] } }, 24] },
+                            then: { $toObjectId: "$senderId" },
+                            else: null
+                        }
+                    }
+                }
+            },
+
+
+            {
+                // Determine opponentId (if logged-in user is sender, opponent is receiver and vice versa)
+                $addFields: {
+                    opponentId: {
+                        $cond: [
+                            { $eq: ["$senderId", userId] },
+                            "$receiverObjectId",
+                            "$senderObjectId"
+                        ]
+                    }
                 }
             },
             {
                 $lookup: {
-                    from: "users",  // Join with the users collection to get the receiver details
-                    localField: "receiverId",  // Match receiverId from chatList with _id in users collection
-                    foreignField: "_id",  // _id field in the users collection
-                    as: "receiverDetails"
+                    from: "users",
+                    localField: "opponentId",
+                    foreignField: "_id",
+                    as: "opponentDetails"
                 }
             },
             {
                 $unwind: {
-                    path: "$receiverDetails",
-                    preserveNullAndEmptyArrays: true  // Keep chats even if the receiver doesn't exist
-                }
-            },
-            {
-                $lookup: {
-                    from: "users",  // Join with the users collection to get the receiver details
-                    localField: "senderId",  // Match receiverId from chatList with _id in users collection
-                    foreignField: "_id",  // _id field in the users collection
-                    as: "senderDetails"
-                }
-            },
-            {
-                $unwind: {
-                    path: "$senderDetails",
-                    preserveNullAndEmptyArrays: true  // Keep chats even if the receiver doesn't exist
+                    path: "$opponentDetails",
+                    preserveNullAndEmptyArrays: true
                 }
             },
             {
@@ -62,20 +75,18 @@ const getUserChatList = async (req, res) => {
                         receiverId: "$receiverId"
                     },
                     unreadCount: 1,
-                    receiver: {
-                        name: "$receiverDetails.name",
-                        profileImage: "$receiverDetails.profileImage"
-                    },
-                    sender: {
-                        name: "$senderDetails.name",
-                        profileImage: "$senderDetails.profileImage"
+                    opponent: {
+                        id: "$opponentDetails._id",
+                        name: "$opponentDetails.name",
+                        profileImage: "$opponentDetails.profileImage"
                     }
                 }
             },
             {
-                $sort: { "lastMessage.time": -1 }  // Sort by the last message time
+                $sort: { "lastMessage.time": -1 }
             }
         ]);
+
 
         return res.status(200).json({
             status: 1,
@@ -113,7 +124,7 @@ const getChatDetails = async (req, res) => {
             } else if (messageDate === yesterday) {
                 groupLabel = 'Yesterday';
             } else {
-                groupLabel = messageDate;
+                groupLabel = moment(message.timestamp).format('D MMMM YYYY');
             }
 
             // If the group doesn't exist in the accumulator, create it
@@ -194,7 +205,7 @@ const sendMessage = async (req, res) => {
             receiverId,
             message,
             status: 'sent',
-            senderUnreadCount: senderUnreadCount + 1, // Increment unread count for sender
+            senderUnreadCount: senderUnreadCount, // Increment unread count for sender
             receiverUnreadCount: receiverUnreadCount + 1, // Increment unread count for receiver
         });
 
@@ -211,7 +222,7 @@ const sendMessage = async (req, res) => {
                 receiverId: receiverId,
                 lastMessageTime: Date.now(),
                 lastMessageStatus: 'sent',
-                unreadCount: senderUnreadCount + 1, // Increment unread count for sender
+                unreadCount: senderUnreadCount, // Increment unread count for sender
             },
             { upsert: true }
         );
@@ -226,7 +237,7 @@ const sendMessage = async (req, res) => {
                 senderId: senderId,
                 receiverId: receiverId,
                 lastMessageTime: Date.now(),
-                unreadCount: 1,unreadCount: receiverUnreadCount + 1, // Increment unread count for receiver
+                unreadCount: receiverUnreadCount + 1, // Increment unread count for receiver
             },
             { upsert: true }
         );
@@ -329,8 +340,8 @@ const markMessagesAsRead = async (req, res) => {
         // Update the ChatList to set unreadCount to 0 for the user
         await ChatList.findOneAndUpdate(
             { userId, chatId },
-            { $set: { unreadCount: 0 } },
-            { upsert: true }
+            { $set: { unreadCount: 0 ,lastMessageStatus:'read'} },
+            { upsert: false }
         );
 
         res.status(200).json({

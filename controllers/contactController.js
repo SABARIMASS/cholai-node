@@ -24,8 +24,9 @@ const checkContacts = async (req, res) => {
 
         // Transform the data for the response
         const results = users.map(user => ({
-            name: user.username,
-            chatId: user.chatId,
+            name: user.name,
+            chatId: user.id, // Assuming user._id is used as chatId
+             profileImage: user.profileImage || '', // Default to empty string if no profile image
             countryCode: user.countryCode,
             phoneNumber: user.phoneNumber,
         }));
