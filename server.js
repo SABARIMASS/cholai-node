@@ -43,19 +43,23 @@ app.use('/local', express.static(path.join(__dirname, 'local')));
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
-    // Handle joining a specific chat room (using chatId as room identifier)
+     // Expect frontend to pass userId on connection
+    const userId = socket.handshake.query.userId;
+    if (userId) {
+        socket.join(userId);  // Join a room for personal chat list updates
+        console.log(`User ${userId} joined their personal room`);
+    }
+
     socket.on('joinChat', (chatId) => {
-        console.log('User joined chat room:', chatId);
-        socket.join(chatId);  // User joins a specific chat room
+        socket.join(chatId);
+        console.log('Joined chat room:', chatId);
     });
 
-    // Handle leaving a chat room
     socket.on('leaveChat', (chatId) => {
-        console.log('User left chat room:', chatId);
-        socket.leave(chatId);  // User leaves the specific chat room
+        socket.leave(chatId);
+        console.log('Left chat room:', chatId);
     });
 
-    // Handle disconnection
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
     });

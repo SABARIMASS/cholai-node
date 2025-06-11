@@ -242,14 +242,82 @@ const sendMessage = async (req, res) => {
             { upsert: true }
         );
 
-        const chatListData = {
-            chatId,
-            participants: [senderId, receiverId],
-            lastMessage: message,
-            receiverId: receiverId,
-            lastMessageTime: Date.now(),
-            unreadCount: 1,
-        };
+           const chatList = await ChatList.aggregate([
+            {
+                $match: {
+                    userId: receiverId
+                }
+            },
+
+            {
+                $addFields: {
+                    receiverObjectId: {
+                        $cond: {
+                            if: { $eq: [{ $strLenCP: { $ifNull: ["$receiverId", ""] } }, 24] },
+                            then: { $toObjectId: "$receiverId" },
+                            else: null
+                        }
+                    },
+                    senderObjectId: {
+                        $cond: {
+                            if: { $eq: [{ $strLenCP: { $ifNull: ["$senderId", ""] } }, 24] },
+                            then: { $toObjectId: "$senderId" },
+                            else: null
+                        }
+                    }
+                }
+            },
+
+
+            {
+                // Determine opponentId (if logged-in user is sender, opponent is receiver and vice versa)
+                $addFields: {
+                    opponentId: {
+                        $cond: [
+                            { $eq: ["$senderId", receiverId] },
+                            "$receiverObjectId",
+                            "$senderObjectId"
+                        ]
+                    }
+                }
+            },
+            {
+                $lookup: {
+                    from: "users",
+                    localField: "opponentId",
+                    foreignField: "_id",
+                    as: "opponentDetails"
+                }
+            },
+            {
+                $unwind: {
+                    path: "$opponentDetails",
+                    preserveNullAndEmptyArrays: true
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    chatId: 1,
+                    lastMessage: {
+                        text: "$lastMessage",
+                        status: "$lastMessageStatus",
+                        time: "$lastMessageTime",
+                        senderId: "$senderId",
+                        receiverId: "$receiverId"
+                    },
+                    unreadCount: 1,
+                    opponent: {
+                        id: "$opponentDetails._id",
+                        name: "$opponentDetails.name",
+                        profileImage: "$opponentDetails.profileImage"
+                    }
+                }
+            },
+            {
+                $sort: { "lastMessage.time": -1 }
+            }
+        ]);
 
         const chatDetailsData = {
             chatId,
@@ -262,7 +330,8 @@ const sendMessage = async (req, res) => {
         };
 
         // Emit the message to the specific chat room
-        io.in(chatId).emit('updateChatList', chatListData);  // Emit to chat room
+       // io.in(senderId).emit('updateChatList', chatListData);  // Emit to chat room
+         io.in(receiverId).emit('updateChatList', chatList);  // Emit to chat room
         io.in(chatId).emit('updateChatDetails', chatDetailsData);  // Emit to chat room
 
         res.status(200).json({
