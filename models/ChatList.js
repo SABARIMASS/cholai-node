@@ -10,7 +10,7 @@ const chatListSchema = new mongoose.Schema({
     lastMessageTime: { type: Date, default: Date.now }, // Time of the last message
     lastMessageStatus: {
         type: String,
-        enum: ['sent', 'delivered', 'read'],
+        enum: ['sent', 'delivered', 'read','none'],
         default: 'sent'
     }, // Status of the last message
     unreadCount: { type: Number, default: 0 }, // Count of unread messages

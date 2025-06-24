@@ -1,0 +1,117 @@
+import ChatList from '../models/ChatList.js';
+import ChatDetails from '../models/ChatDetail.js';
+
+
+export default function (io) {
+    io.on('connection', (socket) => {
+        console.log('User connected:', socket.id);
+
+        const userId = socket.handshake.query.userId;
+        if (userId) {
+            socket.join(userId);
+            console.log(`User ${userId} joined their personal room`);
+        }
+
+        socket.on('joinChat', (chatId) => {
+            socket.join(chatId);
+            console.log(`Joined chat room: ${chatId}`);
+        });
+
+        socket.on('leaveChat', (chatId) => {
+            socket.leave(chatId);
+            console.log(`Left chat room: ${chatId}`);
+        });
+
+        socket.on('markAsDelivered', async (data) => {
+            const { senderId, receiverId, chatId, messageId } = data;
+
+            console.log(`Marking message  as delivered from ${senderId} to ${receiverId} in chat ${chatId}`);
+
+            try {
+                const result = await ChatDetails.updateMany(
+                    { chatId, senderId, receiverId, status: 'sent' },
+                    { $set: { status: 'delivered' } }
+                );
+                console.log('Matched:', result.matchedCount, 'Modified:', result.acknowledged);
+
+                console.log(`ChatDetails: Message  marked as delivered`);
+
+                // Update ChatList if this message is the last one shown
+                await ChatList.updateOne(
+
+                    {
+                        userId: senderId,
+                        chatId, senderId, receiverId,
+                        lastMessageStatus: { $ne: "delivered" }
+                    },
+                    { $set: { lastMessageStatus: "delivered" } }
+                    // { $set: { lastMessageStatus: 'delivered' } }
+                );
+                console.log('Matched:', result.matchedCount);
+                console.log('Modified:', result.modifiedCount);
+                console.log(`ChatList: Last message status updated to delivered for chat ${chatId}`);
+
+                // Emit event to receiver and chat room
+                //io.to(chatId).emit('messageDeliveredAll', { senderId, receiverId, chatId, messageId });
+                io.to(senderId).emit('messageDeliveredAll', { senderId, receiverId, chatId, messageId });
+                io.to(senderId).emit('messageDelivered', { senderId, receiverId, chatId, messageId });
+
+            } catch (err) {
+                console.error(`Error in markAsDelivered: ${err.message}`);
+            }
+        });
+
+        socket.on('markAsRead', async (data) => {
+            const { senderId, receiverId, chatId } = data;
+
+            console.log(`Marking messages as read from ${senderId} to ${receiverId} in chat ${chatId}`);
+
+            try {
+                // 1. Update all unread ChatDetails messages from sender to receiver
+                const result = await ChatDetails.updateMany(
+                    {
+                        chatId,
+                        senderId,
+                        receiverId, senderUnreadCount: 0,
+                        status: { $ne: 'read' },
+                    },
+                    { $set: { status: 'read' } }
+                );
+
+                console.log(`ChatDetails: ${result.modifiedCount} messages marked as read`);
+
+                // 2. Update ChatList: Set lastMessageStatus to 'read' and reset unread count
+                await ChatList.updateOne(
+                    {
+                        chatId,
+                        senderId,
+                        receiverId,
+                    },
+                    {
+                        $set: {
+                            lastMessageStatus: 'read',
+                            unreadCount: 0,
+                        },
+                    }
+                );
+
+                console.log(`ChatList: Last message status updated to read for chat ${chatId}`);
+
+                // 3. Emit to sender (who originally sent the message), so their UI updates
+                io.to(senderId).emit('messageRead', {
+                    senderId,
+                    receiverId,
+                    chatId,
+                });
+                io.to(receiverId).emit('chatListCount', { count: 0, chatId });
+            } catch (err) {
+                console.error(`Error in markAsRead: ${err.message}`);
+            }
+        });
+
+
+        socket.on('disconnect', () => {
+            console.log('User disconnected:', socket.id);
+        });
+    });
+};

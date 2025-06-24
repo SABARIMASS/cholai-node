@@ -26,7 +26,7 @@ connectDB();
 // Middleware
 app.use(express.json());
 app.use(cors());
-
+const socketHandler = require('./socket/socketHandler').default;
 // Define Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/contacts', contactRoutes);
@@ -40,30 +40,7 @@ app.use('/api/chats', (req, res, next) => {
 // Serve static files from the "local/temp" folder
 app.use('/local', express.static(path.join(__dirname, 'local')));
 // Initialize socket connections
-io.on('connection', (socket) => {
-    console.log('A user connected:', socket.id);
-
-     // Expect frontend to pass userId on connection
-    const userId = socket.handshake.query.userId;
-    if (userId) {
-        socket.join(userId);  // Join a room for personal chat list updates
-        console.log(`User ${userId} joined their personal room`);
-    }
-
-    socket.on('joinChat', (chatId) => {
-        socket.join(chatId);
-        console.log('Joined chat room:', chatId);
-    });
-
-    socket.on('leaveChat', (chatId) => {
-        socket.leave(chatId);
-        console.log('Left chat room:', chatId);
-    });
-
-    socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
-    });
-});
+socketHandler(io);
 
 // Start the server
 const PORT = process.env.PORT || 5000;

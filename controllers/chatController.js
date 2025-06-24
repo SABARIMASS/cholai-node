@@ -9,84 +9,14 @@ const User = require('../models/User');
 const getUserChatList = async (req, res) => {
     try {
         const { userId } = req.body; // logged-in user ID
-
-        const chatList = await ChatList.aggregate([
-            {
-                $match: {
-                    userId: userId
-                }
-            },
-
-            {
-                $addFields: {
-                    receiverObjectId: {
-                        $cond: {
-                            if: { $eq: [{ $strLenCP: { $ifNull: ["$receiverId", ""] } }, 24] },
-                            then: { $toObjectId: "$receiverId" },
-                            else: null
-                        }
-                    },
-                    senderObjectId: {
-                        $cond: {
-                            if: { $eq: [{ $strLenCP: { $ifNull: ["$senderId", ""] } }, 24] },
-                            then: { $toObjectId: "$senderId" },
-                            else: null
-                        }
-                    }
-                }
-            },
-
-
-            {
-                // Determine opponentId (if logged-in user is sender, opponent is receiver and vice versa)
-                $addFields: {
-                    opponentId: {
-                        $cond: [
-                            { $eq: ["$senderId", userId] },
-                            "$receiverObjectId",
-                            "$senderObjectId"
-                        ]
-                    }
-                }
-            },
-            {
-                $lookup: {
-                    from: "users",
-                    localField: "opponentId",
-                    foreignField: "_id",
-                    as: "opponentDetails"
-                }
-            },
-            {
-                $unwind: {
-                    path: "$opponentDetails",
-                    preserveNullAndEmptyArrays: true
-                }
-            },
-            {
-                $project: {
-                    _id: 0,
-                    chatId: 1,
-                    lastMessage: {
-                        text: "$lastMessage",
-                        status: "$lastMessageStatus",
-                        time: "$lastMessageTime",
-                        senderId: "$senderId",
-                        receiverId: "$receiverId"
-                    },
-                    unreadCount: 1,
-                    opponent: {
-                        id: "$opponentDetails._id",
-                        name: "$opponentDetails.name",
-                        profileImage: "$opponentDetails.profileImage"
-                    }
-                }
-            },
-            {
-                $sort: { "lastMessage.time": -1 }
-            }
-        ]);
-
+        const chatList = await getLastChat(userId); // Fetch the chat list for the user
+        if (!chatList || chatList.length === 0) {
+            return res.status(404).json({
+                status: 0,
+                message: "No chats found for this user",
+                data: []
+            });
+        }
 
         return res.status(200).json({
             status: 1,
@@ -182,21 +112,8 @@ const sendMessage = async (req, res) => {
         const chatId = [senderId, receiverId].sort().join('_');
         const messageId = uuidv4();
 
-        const unreadStatuses = ['sent', 'delivered'];
+        // const unreadStatuses = ['sent', 'delivered'];
 
-        // Count unread messages sent to sender
-        const senderUnreadCount = await ChatDetails.countDocuments({
-            chatId,
-            receiverId: senderId,
-            status: { $in: unreadStatuses }
-        });
-
-        // Count unread messages sent to receiver
-        const receiverUnreadCount = await ChatDetails.countDocuments({
-            chatId,
-            receiverId: receiverId,
-            status: { $in: unreadStatuses }
-        });
 
         const newMessage = new ChatDetails({
             messageId,
@@ -205,12 +122,25 @@ const sendMessage = async (req, res) => {
             receiverId,
             message,
             status: 'sent',
-            senderUnreadCount: senderUnreadCount, // Increment unread count for sender
-            receiverUnreadCount: receiverUnreadCount + 1, // Increment unread count for receiver
+        
         });
 
         await newMessage.save();
 
+         // Count unread messages sent to sender
+        const senderUnreadCount = await ChatDetails.countDocuments({
+            chatId,
+            receiverId: senderId,
+            status: { $in: ['sent', 'delivered'] }
+        });
+
+        // Count unread messages sent to receiver
+        const receiverUnreadCount = await ChatDetails.countDocuments({
+            chatId,
+            receiverId: receiverId,
+            status: { $in: ['sent', 'delivered'] }
+        });
+        console.log("Sender unread count: %s, Receiver unread count: %s", senderUnreadCount, receiverUnreadCount);
         await ChatList.findOneAndUpdate(
             { userId: senderId, chatId },
             {
@@ -235,89 +165,16 @@ const sendMessage = async (req, res) => {
                 participants: [receiverId, senderId],
                 lastMessage: message,
                 senderId: senderId,
+                lastMessageStatus:'none',
                 receiverId: receiverId,
                 lastMessageTime: Date.now(),
-                unreadCount: receiverUnreadCount + 1, // Increment unread count for receiver
+                unreadCount: receiverUnreadCount , // Increment unread count for receiver
             },
             { upsert: true }
         );
 
-           const chatList = await ChatList.aggregate([
-            {
-                $match: {
-                    userId: receiverId
-                }
-            },
-
-            {
-                $addFields: {
-                    receiverObjectId: {
-                        $cond: {
-                            if: { $eq: [{ $strLenCP: { $ifNull: ["$receiverId", ""] } }, 24] },
-                            then: { $toObjectId: "$receiverId" },
-                            else: null
-                        }
-                    },
-                    senderObjectId: {
-                        $cond: {
-                            if: { $eq: [{ $strLenCP: { $ifNull: ["$senderId", ""] } }, 24] },
-                            then: { $toObjectId: "$senderId" },
-                            else: null
-                        }
-                    }
-                }
-            },
-
-
-            {
-                // Determine opponentId (if logged-in user is sender, opponent is receiver and vice versa)
-                $addFields: {
-                    opponentId: {
-                        $cond: [
-                            { $eq: ["$senderId", receiverId] },
-                            "$receiverObjectId",
-                            "$senderObjectId"
-                        ]
-                    }
-                }
-            },
-            {
-                $lookup: {
-                    from: "users",
-                    localField: "opponentId",
-                    foreignField: "_id",
-                    as: "opponentDetails"
-                }
-            },
-            {
-                $unwind: {
-                    path: "$opponentDetails",
-                    preserveNullAndEmptyArrays: true
-                }
-            },
-            {
-                $project: {
-                    _id: 0,
-                    chatId: 1,
-                    lastMessage: {
-                        text: "$lastMessage",
-                        status: "$lastMessageStatus",
-                        time: "$lastMessageTime",
-                        senderId: "$senderId",
-                        receiverId: "$receiverId"
-                    },
-                    unreadCount: 1,
-                    opponent: {
-                        id: "$opponentDetails._id",
-                        name: "$opponentDetails.name",
-                        profileImage: "$opponentDetails.profileImage"
-                    }
-                }
-            },
-            {
-                $sort: { "lastMessage.time": -1 }
-            }
-        ]);
+        const senderLastchat = await getLastChat(senderId); // Fetch updated chat list for sender
+        const receiverLastchat = await getLastChat(receiverId); // Fetch updated chat list for receiver
 
         const chatDetailsData = {
             chatId,
@@ -330,8 +187,8 @@ const sendMessage = async (req, res) => {
         };
 
         // Emit the message to the specific chat room
-       // io.in(senderId).emit('updateChatList', chatListData);  // Emit to chat room
-         io.in(receiverId).emit('updateChatList', chatList);  // Emit to chat room
+        io.in(senderId).emit('updateChatList', senderLastchat);  // Emit to chat room
+        io.in(receiverId).emit('updateChatList', receiverLastchat);  // Emit to chat room
         io.in(chatId).emit('updateChatDetails', chatDetailsData);  // Emit to chat room
 
         res.status(200).json({
@@ -400,32 +257,124 @@ const markMessagesAsRead = async (req, res) => {
     const { userId, chatId } = req.body;
 
     try {
+        const io = req.io;
+
+     // Get unique receiverIds of unread messages sent by this user
+        const receiverIds = await ChatDetails.distinct('receiverId', {
+            chatId,
+            senderId: userId,
+        
+        });
+        // Emit to all receiverIds found
+        const receiverId = receiverIds[0]; // or whichever index you want
         // Mark all unread messages for the user as 'read'
         await ChatDetails.updateMany(
-            { chatId, receiverId: userId, status: { $ne: 'read' } },
+            { chatId, senderId: userId, senderUnreadCount:0,status: { $ne: 'read' } },
             { $set: { status: 'read' } }
         );
 
         // Update the ChatList to set unreadCount to 0 for the user
         await ChatList.findOneAndUpdate(
-            { userId, chatId },
-            { $set: { unreadCount: 0 ,lastMessageStatus:'read'} },
+            { userId:receiverId, chatId },
+            { $set: { unreadCount: 0, lastMessageStatus: 'read' } },
             { upsert: false }
         );
+   
+
+        
+        console.log("Marking messages as read for userId: %s, receiverId: %s, chatId: %s", userId, receiverId, chatId);
+        io.to(userId).emit('messageRead', { senderId:userId, receiverId, chatId });
+        io.to(receiverId).emit('chatListCount', { count: 0, chatId  });
 
         res.status(200).json({
-            status: 1, // Success
+            status: 1,
             message: 'All unread messages marked as read',
         });
     } catch (error) {
         console.error('Error marking messages as read:', error);
         res.status(500).json({
-            status: -1, // Failure
+            status: -1,
             message: 'Internal server error',
         });
     }
 };
 
+async function getLastChat(userId) {
+    const chatList = await ChatList.aggregate([
+        {
+            $match: {
+                userId: userId
+            }
+        },
+        {
+            $addFields: {
+                receiverObjectId: {
+                    $cond: {
+                        if: { $eq: [{ $strLenCP: { $ifNull: ["$receiverId", ""] } }, 24] },
+                        then: { $toObjectId: "$receiverId" },
+                        else: null
+                    }
+                },
+                senderObjectId: {
+                    $cond: {
+                        if: { $eq: [{ $strLenCP: { $ifNull: ["$senderId", ""] } }, 24] },
+                        then: { $toObjectId: "$senderId" },
+                        else: null
+                    }
+                }
+            }
+        },
+        {
+            $addFields: {
+                opponentId: {
+                    $cond: [
+                        { $eq: ["$senderId", userId] },
+                        "$receiverObjectId",
+                        "$senderObjectId"
+                    ]
+                }
+            }
+        },
+        {
+            $lookup: {
+                from: "users",
+                localField: "opponentId",
+                foreignField: "_id",
+                as: "opponentDetails"
+            }
+        },
+        {
+            $unwind: {
+                path: "$opponentDetails",
+                preserveNullAndEmptyArrays: true
+            }
+        },
+        {
+            $project: {
+                _id: 0,
+                chatId: 1,
+                lastMessage: {
+                    text: "$lastMessage",
+                    status: "$lastMessageStatus",
+                    time: "$lastMessageTime",
+                    senderId: "$senderId",
+                    receiverId: "$receiverId"
+                },
+                unreadCount: 1,
+                opponent: {
+                    id: "$opponentDetails._id",
+                    name: "$opponentDetails.name",
+                    profileImage: "$opponentDetails.profileImage"
+                }
+            }
+        },
+        {
+            $sort: { "lastMessage.time": -1 }
+        }
+    ]);
+
+    return chatList;
+}
 
 
 module.exports = { getUserChatList, getChatDetails, sendMessage, updateMessageStatus, markMessagesAsRead };
