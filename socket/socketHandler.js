@@ -1,15 +1,30 @@
 import ChatList from '../models/ChatList.js';
 import ChatDetails from '../models/ChatDetail.js';
-
+import User from '../models/User.js';
 
 export default function (io) {
+
     io.on('connection', (socket) => {
         console.log('User connected:', socket.id);
-
         const userId = socket.handshake.query.userId;
+
+        io.emit('updateUserStatus', { userId, status: 'online' });
         if (userId) {
             socket.join(userId);
             console.log(`User ${userId} joined their personal room`);
+            const now = new Date();
+            User.findByIdAndUpdate(userId, {
+                isOnline: true,
+                lastSeenDateTime: now,
+            }, { new: true }).then((updatedUser) => {
+                if (updatedUser) {
+                    io.emit('updateUserStatus', {
+                        userId,
+                        status: 'online'
+                    });
+                }
+            }).catch(console.error);
+
         }
 
         socket.on('joinChat', (chatId) => {
@@ -109,9 +124,33 @@ export default function (io) {
             }
         });
 
+        socket.on('typing', ({ chatId, senderId }) => {
+            socket.broadcast.to(chatId).emit('userTyping', { senderId, chatId });
+        });
 
-        socket.on('disconnect', () => {
-            console.log('User disconnected:', socket.id);
+        socket.on('stopTyping', ({ chatId, senderId }) => {
+            socket.broadcast.to(chatId).emit('userStoppedTyping', { senderId, chatId });
+        });
+        socket.on('disconnect', async () => {
+
+            if (userId) {
+                try {
+                    const now = new Date();
+                    await User.findByIdAndUpdate(userId, {
+                        isOnline: false,
+                        lastSeenDateTime: now,
+                    });
+
+                    io.emit('updateUserStatus', {
+                        userId,
+                        status: 'offline',
+                        lastSeen: now
+                    });
+                } catch (err) {
+                    console.error('Error updating user status on disconnect:', err);
+                }
+            }
+            console.log('User disconnected:', socket.id, userId);
         });
     });
 };

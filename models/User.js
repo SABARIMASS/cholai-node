@@ -14,6 +14,8 @@ const userSchema = new mongoose.Schema(
         otpExpiration: { type: Date, required: false },
         userStatus: { type: String, enum: ['new', 'unverified', 'verified'], default: 'new' },
         jwtToken: { type: String, required: false },
+        isOnline: { type: Boolean, default: null },
+        lastSeenDateTime: { type: Date, default: null },
     },
     { timestamps: true }
 );

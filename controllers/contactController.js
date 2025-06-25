@@ -44,5 +44,36 @@ const checkContacts = async (req, res) => {
         });
     }
 };
+const userStatus = async (req, res) => {
+      const { userId } = req.body;
 
-module.exports = { checkContacts };
+    try {
+        const user = await User.findById(userId, 'isOnline lastSeenDateTime userStatus');
+console.log('Fetching user status for userId:', userId);
+        if (!user) {
+            return res.status(404).json({
+                status: 0,
+                message: 'User not found',
+            });
+        }
+
+        return res.status(200).json({
+            status: 1,
+            message: 'User status fetched successfully',
+            data: {
+                userId: userId,
+                isOnline: user.isOnline,
+                lastSeen: user.lastSeenDateTime,
+                userStatus: user.userStatus
+            },
+        });
+    } catch (error) {
+        console.error('Error fetching user status:', error);
+        return res.status(500).json({
+            status: -1,
+            message: 'Internal server error',
+        });
+    }
+};
+
+module.exports = { checkContacts ,userStatus};

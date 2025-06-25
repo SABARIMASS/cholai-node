@@ -275,7 +275,7 @@ const markMessagesAsRead = async (req, res) => {
 
         // Update the ChatList to set unreadCount to 0 for the user
         await ChatList.findOneAndUpdate(
-            { userId:receiverId, chatId },
+            { userId:userId, chatId, },
             { $set: { unreadCount: 0, lastMessageStatus: 'read' } },
             { upsert: false }
         );
