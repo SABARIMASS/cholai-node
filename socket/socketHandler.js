@@ -1,7 +1,8 @@
 import ChatList from '../models/ChatList.js';
 import ChatDetails from '../models/ChatDetail.js';
 import User from '../models/User.js';
-
+// Maintain peer mapping
+const users = {};
 export default function (io) {
 
     io.on('connection', (socket) => {
@@ -98,9 +99,24 @@ export default function (io) {
                 // 2. Update ChatList: Set lastMessageStatus to 'read' and reset unread count
                 await ChatList.updateOne(
                     {
+                        userId: receiverId,
                         chatId,
-                        senderId,
-                        receiverId,
+                        // senderId,
+                        // receiverId,
+                    },
+                    {
+                        $set: {
+                            lastMessageStatus: 'read',
+                            unreadCount: 0,
+                        },
+                    }
+                );
+                await ChatList.updateOne(
+                    {
+                        userId: senderId,
+                        chatId,
+                        // senderId,
+                        // receiverId,
                     },
                     {
                         $set: {
@@ -131,6 +147,37 @@ export default function (io) {
         socket.on('stopTyping', ({ chatId, senderId }) => {
             socket.broadcast.to(chatId).emit('userStoppedTyping', { senderId, chatId });
         });
+
+        ////VOICE AND VIDEO CALLS
+        // socket.on('register', (userId) => {
+           
+        // });
+         users[userId] = socket.id;
+
+        socket.on('offer', (data) => {
+            console.log('Offer received:', data);
+            const targetSocket = users[data.to];
+            io.to(targetSocket).emit('offer', data);
+        });
+
+        socket.on('answer', (data) => {
+            console.log('Answer received:', data);
+            const targetSocket = users[data.to];
+            io.to(targetSocket).emit('answer', data);
+        });
+
+        socket.on('ice-candidate', (data) => {
+            console.log('ICE candidate received:', data);
+            const targetSocket = users[data.to];
+            io.to(targetSocket).emit('ice-candidate', data);
+        });
+socket.on('end_call', ({ to }) => {
+  const targetSocket = users[to];
+  if (targetSocket) {
+    io.to(targetSocket).emit('end_call');
+  }
+});
+
         socket.on('disconnect', async () => {
 
             if (userId) {
@@ -151,6 +198,14 @@ export default function (io) {
                 }
             }
             console.log('User disconnected:', socket.id, userId);
+            ///VOICE AND VIDEO CALLS
+            for (const [userId, id] of Object.entries(users)) {
+                if (id === socket.id) {
+                    delete users[userId];
+                    break;
+                }
+            }
+
         });
     });
 };
