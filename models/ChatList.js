@@ -8,6 +8,7 @@ const chatListSchema = new mongoose.Schema({
     receiverId: { type: String, required: true }, // User ID of the last sender
       senderId: { type: String, required: true }, // User ID of the last sender
     lastMessageTime: { type: Date, default: Date.now }, // Time of the last message
+    
     lastMessageStatus: {
         type: String,
         enum: ['sent', 'delivered', 'read','none'],

@@ -1,6 +1,7 @@
 import ChatList from '../models/ChatList.js';
 import ChatDetails from '../models/ChatDetail.js';
 import User from '../models/User.js';
+
 // Maintain peer mapping
 const users = {};
 export default function (io) {
@@ -150,33 +151,93 @@ export default function (io) {
 
         ////VOICE AND VIDEO CALLS
         // socket.on('register', (userId) => {
-           
+
         // });
-         users[userId] = socket.id;
+        users[userId] = socket.id;
 
-        socket.on('offer', (data) => {
-            console.log('Offer received:', data);
-            const targetSocket = users[data.to];
-            io.to(targetSocket).emit('offer', data);
+      
+
+
+        socket.on('offer', async (data) => {
+            try {
+                const targetSocket = users[data.to];
+
+                if (!targetSocket) {
+                    return socket.emit('user-unavailable', { to: data.to });
+                }
+
+                // Fetch userInfo
+                const user = await User.findById(data.from); // assuming `data.from` contains userId
+
+                if (!user) {
+                    return socket.emit('user-not-found', { userId: data.from });
+                }
+
+                const userInfo = {
+                    userId: user._id,
+                    name: user.name,
+                    countryCode: user.countryCode,
+                    phoneNumber: user.phoneNumber,
+                    about: user.about,
+                    userStatus: user.userStatus,
+                    profileImage: user.profileImage,
+                };
+
+                // Send offer along with userInfo
+                io.to(targetSocket).emit('offer', { ...data, userInfo });
+            } catch (error) {
+                console.error('Offer error:', error);
+                socket.emit('error', { message: 'Failed to process offer' });
+            }
         });
 
-        socket.on('answer', (data) => {
-            console.log('Answer received:', data);
-            const targetSocket = users[data.to];
-            io.to(targetSocket).emit('answer', data);
+        socket.on('answer', async (data) => {
+            try {
+                const targetSocket = users[data.to];
+
+                if (!targetSocket) {
+                    return socket.emit('user-unavailable', { to: data.to });
+                }
+
+                // Fetch userInfo
+                const user = await User.findById(data.from); // assuming `data.from` contains userId
+
+                if (!user) {
+                    return socket.emit('user-not-found', { userId: data.from });
+                }
+
+                const userInfo = {
+                    userId: user._id,
+                    name: user.name,
+                    countryCode: user.countryCode,
+                    phoneNumber: user.phoneNumber,
+                    about: user.about,
+                    userStatus: user.userStatus,
+                    profileImage: user.profileImage,
+                };
+
+                // Send answer along with userInfo
+                io.to(targetSocket).emit('answer', { ...data, userInfo });
+            } catch (error) {
+                console.error('Answer error:', error);
+                socket.emit('error', { message: 'Failed to process answer' });
+            }
         });
+
+
 
         socket.on('ice-candidate', (data) => {
             console.log('ICE candidate received:', data);
             const targetSocket = users[data.to];
             io.to(targetSocket).emit('ice-candidate', data);
         });
-socket.on('end_call', ({ to }) => {
-  const targetSocket = users[to];
-  if (targetSocket) {
-    io.to(targetSocket).emit('end_call');
-  }
-});
+        socket.on('end_call', ({ to }) => {
+            console.log('Ending call for:', to);
+            //const targetSocket = users[to];
+            // if (targetSocket) {
+            io.to(to).emit('end_call');
+            //}
+        });
 
         socket.on('disconnect', async () => {
 

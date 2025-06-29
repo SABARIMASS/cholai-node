@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
+const {moveImageToMain} = require('../utills/temp_main'); // Import the function to move images from temp to main storage
 // Configuration
 authenticator.options = { step: 300 }; // Set OTP validity to 5 minutes
 const OTP_SECRET = process.env.OTP_SECRET || 'default_secret_key'; // Use environment variable for security
@@ -204,11 +205,12 @@ const resendOtp = async (req, res) => {
     }
 };
 
+
+
 const setProfile = async (req, res) => {
     const { phoneNumber, countryCode, userId, name, about, tempImage, deviceId, deviceToken } = req.body;
 
     try {
-        // Find the user
         const user = await User.findOne({ phoneNumber, countryCode, _id: userId });
 
         if (!user) {
@@ -222,42 +224,28 @@ const setProfile = async (req, res) => {
             });
         }
 
-        // Update user details
         user.name = name;
-        user.about = about || user.about; // Update about if provided
+        user.about = about || user.about;
         user.userStatus = 'verified';
         user.deviceId = deviceId;
         user.deviceToken = deviceToken;
         user.userIn = true;
 
-        // Handle tempImage
+        // 🔁 If Firebase tempImage path is given
         if (tempImage) {
-            const tempImagePath = path.resolve(__dirname, '../local/temp/', tempImage);
-            const userProfileDir = path.resolve(__dirname, '../local/userProfile/');
-
-            // Ensure the userProfile directory exists
-            if (!fs.existsSync(userProfileDir)) {
-                fs.mkdirSync(userProfileDir, { recursive: true });
-            }
-            const imageFileName = `${userId}-${Date.now()}-${tempImage}`;
-            // Move the file
-            const newImagePath = path.join(userProfileDir, imageFileName);
-            if (fs.existsSync(tempImagePath)) {
-                fs.renameSync(tempImagePath, newImagePath); // Move the file
-                user.profileImage = newImagePath; // Save new path to the user profile
-                user.profileImage = path.join('local/userProfile', imageFileName);
-            } else {
-                return res.status(400).json({ status: -1, message: 'Temp image not found' });
+            try {
+                const firebaseFinalUrl = await moveImageToMain(tempImage, 'profileImages');
+                user.profileImage = firebaseFinalUrl;
+            } catch (err) {
+                console.error('Error moving image on Firebase:', err);
+                return res.status(400).json({ status: -1, message: 'Error processing profile image' });
             }
         }
 
-        // Save the updated user
         await user.save();
 
-        // Generate token
         const token = generateToken(user);
 
-        // Send response
         return res.status(200).json({
             status: 1,
             message: 'Profile updated successfully',
@@ -277,6 +265,7 @@ const setProfile = async (req, res) => {
         return res.status(500).json({ status: -1, message: error.message });
     }
 };
+
 
 const getUserList = async (req, res) => {
     try {
@@ -385,5 +374,35 @@ const logout = async (req, res) => {
     }
 };
 
+const userInfo = async (req, res) => {
+    const { userId } = req.body;
 
-module.exports = { handleOtpRequest, verifyOtp, setProfile, resendOtp, getUserList, deleteUser, profileUpdate, logout };
+    try {
+        // Find the user by ID
+        const user = await User.findById({ _id: userId });
+
+        if (!user) {
+            return res.status(404).json({ status: -1, message: 'User not found' });
+        }
+
+       
+
+        return res.status(200).json({
+            status: 1,
+            message: 'User logged out successfully',
+            responseData: {
+                userId: user._id,
+                name: user.name,
+                countryCode: user.countryCode,
+                phoneNumber: user.phoneNumber,
+                about: user.about,
+                userStatus: user.userStatus,
+                profileImage: user.profileImage,
+            }
+        });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ status: -1, message: error.message });
+    }
+};
+module.exports = { handleOtpRequest, verifyOtp, setProfile, resendOtp, getUserList, deleteUser, profileUpdate, logout,userInfo };

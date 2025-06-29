@@ -2,7 +2,7 @@ const express = require('express');
 const {
     handleOtpRequest,
     verifyOtp,
-    setProfile, resendOtp, getUserList, deleteUser, profileUpdate, logout
+    setProfile, resendOtp, getUserList, deleteUser, profileUpdate, logout,userInfo
 } = require('../controllers/authController'); // Import all required controller functions
 const router = express.Router();
 
@@ -28,4 +28,7 @@ router.put('/profile-update/:id', profileUpdate);
 
 // Logout route
 router.post('/logout', logout);
+
+// UserInfo route
+router.post('/user-info', userInfo);
 module.exports = router;

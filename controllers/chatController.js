@@ -364,6 +364,8 @@ async function getLastChat(userId) {
                 opponent: {
                     id: "$opponentDetails._id",
                     name: "$opponentDetails.name",
+                    phoneNumber: "$opponentDetails.phoneNumber",
+                    countryCode: "$opponentDetails.countryCode",
                     profileImage: "$opponentDetails.profileImage"
                 }
             }
