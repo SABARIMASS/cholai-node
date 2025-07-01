@@ -1,6 +1,7 @@
 import ChatList from '../models/ChatList.js';
 import ChatDetails from '../models/ChatDetail.js';
 import User from '../models/User.js';
+import CallHistory from '../models/CallLogs.js';
 
 // Maintain peer mapping
 const users = {};
@@ -155,22 +156,41 @@ export default function (io) {
         // });
         users[userId] = socket.id;
 
-      
+
 
 
         socket.on('offer', async (data) => {
             try {
+                const callSessionId = data.callSessionId;
                 const targetSocket = users[data.to];
-
+                await CallHistory.create({
+                    callSessionId,
+                    callerId: data.from,
+                    receiverId: data.to,
+                    callType: data.isVideoCall ? "video" : "audio",
+                    status: "missed",
+                    startTime: new Date(),
+                });
                 if (!targetSocket) {
-                    return socket.emit('user-unavailable', { to: data.to });
+
+                    await CallHistory.findOneAndUpdate(
+                        { callSessionId: data.callSessionId },
+                        { status: "missed" }
+                    );
+                    io.to(data.from).emit('end_call', { message: 'User was not in online' });
+                    return;
                 }
 
                 // Fetch userInfo
                 const user = await User.findById(data.from); // assuming `data.from` contains userId
 
                 if (!user) {
-                    return socket.emit('user-not-found', { userId: data.from });
+                    await CallHistory.findOneAndUpdate(
+                        { callSessionId: data.callSessionId },
+                        { status: "missed" }
+                    );
+                    io.to(data.from).emit('end_call', { message: 'User Not Found' });
+                    return;
                 }
 
                 const userInfo = {
@@ -184,7 +204,7 @@ export default function (io) {
                 };
 
                 // Send offer along with userInfo
-                io.to(targetSocket).emit('offer', { ...data, userInfo });
+                io.to(targetSocket).emit('offer', { ...data, userInfo, callSessionId });
             } catch (error) {
                 console.error('Offer error:', error);
                 socket.emit('error', { message: 'Failed to process offer' });
@@ -196,14 +216,24 @@ export default function (io) {
                 const targetSocket = users[data.to];
 
                 if (!targetSocket) {
-                    return socket.emit('user-unavailable', { to: data.to });
+                    await CallHistory.findOneAndUpdate(
+                        { callSessionId: data.callSessionId },
+                        { status: "missed" }
+                    );
+                    io.to(data.from).emit('end_call', { message: 'User was not online' });
+                    return;
                 }
 
                 // Fetch userInfo
                 const user = await User.findById(data.from); // assuming `data.from` contains userId
 
                 if (!user) {
-                    return socket.emit('user-not-found', { userId: data.from });
+                    await CallHistory.findOneAndUpdate(
+                        { callSessionId: data.callSessionId },
+                        { status: "missed" }
+                    );
+                    io.to(data.from).emit('end_call', { message: 'User not found' });
+                    return;
                 }
 
                 const userInfo = {
@@ -215,7 +245,11 @@ export default function (io) {
                     userStatus: user.userStatus,
                     profileImage: user.profileImage,
                 };
-
+                // Update CallHistory status to 'completed' (or 'ongoing')
+                await CallHistory.findOneAndUpdate(
+                    { callSessionId: data.callSessionId },
+                    { status: "ongoing" }
+                );
                 // Send answer along with userInfo
                 io.to(targetSocket).emit('answer', { ...data, userInfo });
             } catch (error) {
@@ -227,14 +261,31 @@ export default function (io) {
 
 
         socket.on('ice-candidate', (data) => {
-            console.log('ICE candidate received:', data);
+            //  console.log('ICE candidate received:', data);
             const targetSocket = users[data.to];
             io.to(targetSocket).emit('ice-candidate', data);
         });
-        socket.on('end_call', ({ to }) => {
-            console.log('Ending call for:', to);
+        socket.on('end_call', async ({ to, callSessionId }) => {
+            console.log('Ending call for:', to, callSessionId);
             //const targetSocket = users[to];
             // if (targetSocket) {
+            const callRecord = await CallHistory.findOne({ callSessionId });
+
+            if (!callRecord) {
+                throw new Error("Call record not found");
+            }
+
+            const endTime = new Date();
+            const durationSeconds = Math.floor((endTime - callRecord.startTime) / 1000);
+            await CallHistory.findOneAndUpdate(
+                { callSessionId },
+                {
+                    status: "completed",
+                    endTime: new Date(),
+                    durationSeconds:durationSeconds, // Calculate duration in seconds
+                    disconnectReason: "user_ended"
+                }
+            );
             io.to(to).emit('end_call');
             //}
         });

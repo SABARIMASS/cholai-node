@@ -35,63 +35,56 @@ const getUserChatList = async (req, res) => {
 };
 
 const getChatDetails = async (req, res) => {
-    const { chatId } = req.body;
+    const { chatId, timeZone } = req.body;
 
     try {
-        // Fetch all messages for the given chatId and sort by timestamp
         const chatDetails = await ChatDetails.find({ chatId }).sort({ timestamp: 1 });
 
-        // Group messages by date (today, yesterday, and older dates)
-        const groupedMessages = chatDetails.reduce((acc, message) => {
-            const messageDate = moment(message.timestamp).format('YYYY-MM-DD');
-            const today = moment().format('YYYY-MM-DD');
-            const yesterday = moment().subtract(1, 'day').format('YYYY-MM-DD');
+        const today = moment().utcOffset(timeZone || '+00:00').startOf('day');
+        const yesterday = moment().utcOffset(timeZone || '+00:00').subtract(1, 'day').startOf('day');
 
-            // Determine the label for the group (Today, Yesterday, or older date)
+        const groupedMessages = chatDetails.reduce((acc, message) => {
+            const messageMoment = moment(message.timestamp).utcOffset(timeZone || '+00:00');
+            const messageDate = messageMoment.clone().startOf('day');
+
             let groupLabel;
-            if (messageDate === today) {
+            if (messageDate.isSame(today, 'day')) {
                 groupLabel = 'Today';
-            } else if (messageDate === yesterday) {
+            } else if (messageDate.isSame(yesterday, 'day')) {
                 groupLabel = 'Yesterday';
             } else {
-                groupLabel = moment(message.timestamp).format('D MMMM YYYY');
+                groupLabel = messageMoment.format('D MMMM YYYY');
             }
 
-            // If the group doesn't exist in the accumulator, create it
             if (!acc[groupLabel]) {
                 acc[groupLabel] = [];
             }
 
-            // Push the message into the appropriate group
             acc[groupLabel].push(message);
-
             return acc;
         }, {});
 
-        // Convert the grouped messages into an array for easier display
         const formattedMessages = Object.keys(groupedMessages).map(date => ({
             dateLabel: date,
             messages: groupedMessages[date]
         }));
 
-        // Sort the groups to show "Today" first, followed by "Yesterday", and then older dates
+        // Sort priority
         formattedMessages.sort((a, b) => {
-            if (a.dateLabel === 'Today') return -1;
-            if (b.dateLabel === 'Today') return 1;
-            if (a.dateLabel === 'Yesterday') return -1;
-            if (b.dateLabel === 'Yesterday') return 1;
-            return new Date(b.dateLabel) - new Date(a.dateLabel);
+            const priority = { 'Today': 2, 'Yesterday': 1 };
+            return (priority[b.dateLabel] || 0) - (priority[a.dateLabel] || 0)
+                || new Date(b.dateLabel) - new Date(a.dateLabel);
         });
 
         res.status(200).json({
-            status: 1, // Success
+            status: 1,
             message: 'Chat details retrieved successfully',
             data: formattedMessages,
         });
     } catch (error) {
         console.error('Error fetching chat details:', error);
         res.status(500).json({
-            status: -1, // Failure
+            status: -1,
             message: 'Internal server error',
         });
     }

@@ -7,6 +7,7 @@ const connectDB = require('./config/db');
 const contactRoutes = require('./routes/contactRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const imageRoutes = require('./routes/documnetsRoutes');
+const callRoutes = require('./routes/callRoutes');
 const path = require('path');
 // Load environment variables
 dotenv.config();
@@ -31,6 +32,7 @@ const socketHandler = require('./socket/socketHandler').default;
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/contacts', contactRoutes);
 app.use('/api/documents', imageRoutes);
+app.use('/api/call', callRoutes);
 app.use('/api/chats', (req, res, next) => {
     req.io = io; // Pass io object to chatRoutes
     next();
