@@ -265,7 +265,7 @@ export default function (io) {
             const targetSocket = users[data.to];
             io.to(targetSocket).emit('ice-candidate', data);
         });
-        socket.on('end_call', async ({ to, callSessionId }) => {
+        socket.on('end_call', async ({ to, callSessionId, isCallHangUp }) => {
             console.log('Ending call for:', to, callSessionId);
             //const targetSocket = users[to];
             // if (targetSocket) {
@@ -276,13 +276,13 @@ export default function (io) {
             }
 
             const endTime = new Date();
-            const durationSeconds = Math.floor((endTime - callRecord.startTime) / 1000);
+            const durationSeconds = isCallHangUp === true ? Math.floor((endTime - callRecord.startTime) / 1000) : 0;
             await CallHistory.findOneAndUpdate(
                 { callSessionId },
                 {
                     status: "completed",
                     endTime: new Date(),
-                    durationSeconds:durationSeconds, // Calculate duration in seconds
+                    durationSeconds: durationSeconds, // Calculate duration in seconds
                     disconnectReason: "user_ended"
                 }
             );

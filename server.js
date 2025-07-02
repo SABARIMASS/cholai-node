@@ -9,6 +9,9 @@ const chatRoutes = require('./routes/chatRoutes');
 const imageRoutes = require('./routes/documnetsRoutes');
 const callRoutes = require('./routes/callRoutes');
 const path = require('path');
+const os = require('os');
+
+
 // Load environment variables
 dotenv.config();
 
@@ -47,5 +50,16 @@ socketHandler(io);
 // Start the server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
+  const interfaces = os.networkInterfaces();
+  console.log(`Server running on the following addresses:`);
+
+  Object.keys(interfaces).forEach((ifaceName) => {
+    interfaces[ifaceName].forEach((iface) => {
+      // Skip over internal (i.e., 127.0.0.1) and non-IPv4 addresses
+      if (iface.family === 'IPv4' && !iface.internal) {
+        console.log(`http://${iface.address}:${PORT}`);
+      }
+    });
+  });
 });
+

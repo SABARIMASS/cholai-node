@@ -17,8 +17,9 @@ const callLogs = async (req, res) => {
         { receiverId: userId }
       ]
     })
-      .populate("callerId", "name profileImage")
-      .populate("receiverId", "name profileImage")
+      .populate("callerId", "name profileImage countryCode phoneNumber")
+      .populate("receiverId", "name profileImage countryCode phoneNumber")
+      
       .sort({ startTime: -1 })
       .lean();
 
@@ -36,12 +37,16 @@ const callLogs = async (req, res) => {
           ? {
               id: call.receiverId._id,
               name: call.receiverId.name,
-              profileImage: call.receiverId.profileImage
+              profileImage: call.receiverId.profileImage,
+              countryCode:call.receiverId.countryCode,
+              phoneNumber:call.receiverId.phoneNumber
             }
           : {
               id: call.callerId._id,
               name: call.callerId.name,
-              profileImage: call.callerId.profileImage
+              profileImage: call.callerId.profileImage,
+               countryCode:call.callerId.countryCode,
+              phoneNumber:call.callerId.phoneNumber
             }
       };
     });

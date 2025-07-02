@@ -13,20 +13,45 @@ const checkContacts = async (req, res) => {
     }
 
     try {
+        // Build dynamic query conditions
+        const orConditions = contacts.map(({ countryCode, phoneNumber }) => {
+            if (!phoneNumber) {
+                // Skip entries without phoneNumber
+                return null;
+            }
+            if (countryCode) {
+                return { countryCode, phoneNumber };
+            } else {
+                return { phoneNumber };
+            }
+        }).filter(Boolean);
+
+        if (orConditions.length === 0) {
+            return res.status(400).json({
+                status: -1,
+                message: 'No valid contacts provided.',
+            });
+        }
+
         // Query the database to find matching verified users
         const users = await User.find({
-            userStatus: 'verified', // Only check verified users
-            $or: contacts.map(({ countryCode, phoneNumber }) => ({
-                countryCode,
-                phoneNumber,
-            })),
+            userStatus: 'verified',
+            $or: orConditions,
         });
 
         // Transform the data for the response
+        if (users.length === 0) {
+            return res.status(200).json({
+            status: 0,
+            message: 'No verified contacts found',
+            data: [],
+            });
+        }
+
         const results = users.map(user => ({
             name: user.name,
             chatId: user.id, // Assuming user._id is used as chatId
-             profileImage: user.profileImage || '', // Default to empty string if no profile image
+            profileImage: user.profileImage || '',
             countryCode: user.countryCode,
             phoneNumber: user.phoneNumber,
         }));
@@ -44,6 +69,7 @@ const checkContacts = async (req, res) => {
         });
     }
 };
+
 const userStatus = async (req, res) => {
       const { userId } = req.body;
 
