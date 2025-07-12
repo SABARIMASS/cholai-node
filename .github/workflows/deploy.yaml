@@ -28,7 +28,7 @@ jobs:
       - name: Start app or Deploy
         # Pass your Firebase secret into the environment
         env:
-          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_CREDENTIALS_JSON }}
+          APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_CREDENTIALS_JSON }}
         run: |
           echo "🚀 Deploying..."
           # Example: start your app
